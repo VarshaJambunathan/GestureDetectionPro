@@ -10,6 +10,7 @@ using System.Windows.Forms;
 using AForge.Imaging.Filters;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
+using System.IO;
 
 namespace GestureDetectionPro
 {
@@ -24,8 +25,6 @@ namespace GestureDetectionPro
         {
 
         }
-
-        //public class ExtractBiggestBlob 
 
 
         private void fileToolStripMenuItem_Click(object sender, EventArgs e)
@@ -43,17 +42,7 @@ namespace GestureDetectionPro
             OpenFileDialog open = new OpenFileDialog();
 
             open.InitialDirectory = @"G:\Saarthi";
-            open.Title = "Select an Image";
-
-            open.CheckFileExists = true;
-            open.CheckPathExists = true;
-
-            open.DefaultExt = "jpg";
-            open.FilterIndex = 2;
-            open.RestoreDirectory = true;
-
-            open.ReadOnlyChecked = true;
-            open.ShowReadOnly = true;
+            open.Title = "Open Image";
 
             if (open.ShowDialog() == DialogResult.OK)
             {
@@ -84,9 +73,11 @@ namespace GestureDetectionPro
                 return z;
         }
 
+        Size newSize = new Size(360, 360);
+
         private void grayscaleToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            Bitmap bmp = new Bitmap(pictureBox1.Image, new Size(300,300));
+            Bitmap bmp = new Bitmap(pictureBox1.Image, newSize);
             int width = bmp.Width;
             int height = bmp.Height;
             int[] arr = new int[225];
@@ -139,11 +130,13 @@ namespace GestureDetectionPro
             pictureBox3.SizeMode = PictureBoxSizeMode.StretchImage;
         }
 
+        static int blockSize = 6;
+
         private void skinColorToolStripMenuItem_Click(object sender, EventArgs e)
         {
             //Extracting RGBs
-            Bitmap hand = new Bitmap(pictureBox1.Image);
-            Bitmap skindetect = new Bitmap(hand.Width, hand.Height);
+            Bitmap hand = new Bitmap(pictureBox1.Image, newSize);
+            Bitmap skinDetect = new Bitmap(hand.Width, hand.Height);
             //Bitmap blackWhite = new Bitmap(hand.Width, hand.Height);
 
             Color black = Color.Black;
@@ -160,8 +153,6 @@ namespace GestureDetectionPro
                     int green = pixel.G;
                     int blue = pixel.B;
 
-
-
                     /* (R, G, B) is classified as skin if: 
                         R > 95 and G > 40 and B > 20 and 
                         max {R, G, B} – min{R, G, B} > 15 and 
@@ -171,56 +162,38 @@ namespace GestureDetectionPro
                         && Math.Abs(red - green) > 15 && red > green && red > blue)
                     {
                         //Console.WriteLine("Success");
-                        skindetect.SetPixel(i, j, pixel);
-                        //blackWhite.SetPixel(i, j, white);
+                        skinDetect.SetPixel(i, j, pixel);
                     }
-                    else
-                    {
-                        //skindetect.SetPixel(i, j, black);
-                        //blackWhite.SetPixel(i, j, black);
-                    }
-
                 }
             }
-
-            pictureBox2.Image = new Bitmap(skindetect);
+            pictureBox2.Image = new Bitmap(skinDetect);
             pictureBox2.SizeMode = PictureBoxSizeMode.StretchImage;
 
-            //pictureBox3.Image = new Bitmap(blackWhite);
-            //pictureBox3.SizeMode = PictureBoxSizeMode.StretchImage;
-        }
-
-        private void bWUsingAForgeToolStripMenuItem_Click(object sender, EventArgs e)
-        {
             Grayscale filter = new Grayscale(0.2125, 0.71254, 0.0721);
-            Bitmap grayImage = filter.Apply((Bitmap)pictureBox2.Image);
+            Bitmap grayImage = filter.Apply(skinDetect);
             Threshold filter2 = new Threshold(100);
-            Bitmap filtered = filter2.Apply(grayImage);
+            Bitmap filteredImage = filter2.Apply(grayImage);
             Closing close = new Closing();
-            close.ApplyInPlace(filtered);
+            close.ApplyInPlace(filteredImage);
             Opening open = new Opening();
-            open.ApplyInPlace(filtered);
+            open.ApplyInPlace(filteredImage);
             // create filter for the filtered image
             ExtractBiggestBlob filter3 = new ExtractBiggestBlob();
             // apply the filter
-            Bitmap biggestBlobsImage = filter3.Apply(filtered);
+            Bitmap biggestBlobsImage = filter3.Apply(filteredImage);
             AForge.IntPoint a = filter3.BlobPosition;
             Console.WriteLine(a);
 
-            //Biggest blob for old extracted sskin image
+            //Biggest blob for old extracted skin image
             ExtractBiggestBlob filter4 = new ExtractBiggestBlob();
-            Bitmap skinBlob = new Bitmap(pictureBox2.Image);
+            Bitmap skinBlob = new Bitmap(skinDetect);
             //apply filter
             Bitmap biggestSkinBlob = filter4.Apply(skinBlob);
-            pictureBox2.Image = new Bitmap(biggestSkinBlob);
-            pictureBox2.SizeMode = PictureBoxSizeMode.StretchImage;
 
             //Skin color for largest blob
-            // This mask is logically AND with original image to extract only the palm which is required for feature extraction. 
             Bitmap one = new Bitmap(biggestSkinBlob);
             Bitmap two = new Bitmap(biggestBlobsImage);
 
-            int i, j;
             for (i = 0; i < two.Width; i++)
             {
                 for (j = 0; j < two.Height; j++)
@@ -236,94 +209,331 @@ namespace GestureDetectionPro
                     int greenTwo = pixelTwo.G;
                     int blueTwo = pixelTwo.B;
 
+                    // This mask is logically AND with original image to extract only the palm which is required for feature extraction. 
                     two.SetPixel(i, j, Color.FromArgb(redOne & redTwo, greenOne & greenTwo, blueOne & blueTwo));
-
-                }
-            }
-            pictureBox3.Image = new Bitmap(two);
-            pictureBox3.SizeMode = PictureBoxSizeMode.StretchImage;
-        }
-
-        private void processingToolStripMenuItem_Click(object sender, EventArgs e)
-        {
-
-        }
-
-        private void unlockAndMarshalToolStripMenuItem_Click(object sender, EventArgs e)
-        {
-            Bitmap processedBitmap = new Bitmap(pictureBox2.Image);
-            BitmapData bitmapData = processedBitmap.LockBits(new Rectangle(0, 0, processedBitmap.Width, processedBitmap.Height), ImageLockMode.ReadWrite, processedBitmap.PixelFormat);
-
-            int bytesPerPixel = Bitmap.GetPixelFormatSize(processedBitmap.PixelFormat) / 8;
-            int byteCount = bitmapData.Stride * processedBitmap.Height;
-            byte[] pixels = new byte[byteCount];
-            IntPtr ptrFirstPixel = bitmapData.Scan0;
-            Marshal.Copy(ptrFirstPixel, pixels, 0, pixels.Length);
-            int heightInPixels = bitmapData.Height;
-            int widthInBytes = bitmapData.Width * bytesPerPixel;
-
-            for (int y = 0; y < heightInPixels; y++)
-            {
-                int currentLine = y * bitmapData.Stride;
-                for (int x = 0; x < widthInBytes; x = x + bytesPerPixel)
-                {
-                    int oldBlue = pixels[currentLine + x];
-                    int oldGreen = pixels[currentLine + x + 1];
-                    int oldRed = pixels[currentLine + x + 2];
-
-                    // calculate new pixel value
-                    pixels[currentLine + x] = (byte)oldBlue;
-                    pixels[currentLine + x + 1] = (byte)oldGreen;
-                    pixels[currentLine + x + 2] = (byte)oldRed;
                 }
             }
 
-            // copy modified bytes back
-            Marshal.Copy(pixels, 0, ptrFirstPixel, pixels.Length);
-            processedBitmap.UnlockBits(bitmapData);
-            pictureBox3.Image = new Bitmap(processedBitmap);
+            //Getting a grayscae image from the recolored image
+            Bitmap getGrayImage = filter.Apply(two);
+            // create filter
+            CannyEdgeDetector filter1 = new CannyEdgeDetector();
+            filter1.LowThreshold = 0;
+            filter1.HighThreshold = 0;
+            filter1.GaussianSigma = 1.4;
+            // apply the filter
+            Bitmap cannyEdgeImage = filter1.Apply(getGrayImage);
+
+            Bitmap resizeImage = new Bitmap(360, 360);
+            using (var graphics = Graphics.FromImage(resizeImage))
+                graphics.DrawImage(cannyEdgeImage, 0, 0, 360, 360);
+
+            pictureBox3.Image = new Bitmap(resizeImage);
             pictureBox3.SizeMode = PictureBoxSizeMode.StretchImage;
 
-        }
+            int x, y;
+            //Image to obtain blocks for
+            Bitmap imageWithBlock = new Bitmap(resizeImage);
+            Console.WriteLine("Width = " + resizeImage.Width + " Height = " + resizeImage.Height);
+            int imageHeightSize = resizeImage.Height / blockSize;
+            int imageWidthSize = resizeImage.Width / blockSize;
+            Console.WriteLine("Width = " + imageWidthSize + " Height = " + imageHeightSize);
 
+            List<int> featureVector = new List<int>();
 
-        private void parallelPlus3ToolStripMenuItem_Click(object sender, EventArgs e)
-        {
-            Bitmap processedBitmap = new Bitmap(pictureBox2.Image);
-            /*
-             * unsafe
+            double totalPixelCount = 0;
+
+            for (i = 0; i < blockSize; i++)
             {
-                BitmapData bitmapData = processedBitmap.LockBits(new Rectangle(0, 0, processedBitmap.Width, processedBitmap.Height), ImageLockMode.ReadWrite, processedBitmap.PixelFormat);
-
-                int bytesPerPixel = System.Drawing.Bitmap.GetPixelFormatSize(processedBitmap.PixelFormat) / 8;
-                int heightInPixels = bitmapData.Height;
-                int widthInBytes = bitmapData.Width * bytesPerPixel;
-                byte* PtrFirstPixel = (byte*)bitmapData.Scan0;
-
-                Parallel.For(0, heightInPixels, y =>
+                for (j = 0; j < blockSize; j++)
                 {
-                    byte* currentLine = PtrFirstPixel + (y * bitmapData.Stride);
-                    for (int x = 0; x < widthInBytes; x = x + bytesPerPixel)
+                    int whiteEdgeCount = 0, blackEdgeCount = 0;
+                    for (x = i * imageWidthSize; x < (i * imageWidthSize) + imageWidthSize; x++)
                     {
-                        int oldBlue = currentLine[x];
-                        int oldGreen = currentLine[x + 1];
-                        int oldRed = currentLine[x + 2];
+                        for (y = j * imageHeightSize; y < (j * imageHeightSize) + imageHeightSize; y++)
+                        {
+                            // To count the edges in the range
+                            Color singlePixel = imageWithBlock.GetPixel(x, y);
 
-                        currentLine[x] = (byte)oldBlue;
-                        currentLine[x + 1] = (byte)oldGreen;
-                        currentLine[x + 2] = (byte)oldRed;
+                            int red = singlePixel.R;
+                            int green = singlePixel.G;
+                            int blue = singlePixel.B;
+
+                            if (singlePixel != Color.FromArgb(Color.Black.ToArgb()))
+                            {
+                                whiteEdgeCount++;
+                            }
+                            else
+                            {
+                                blackEdgeCount++;
+                            }
+                        }
                     }
-                });
-                processedBitmap.UnlockBits(bitmapData);
+                    //Console.WriteLine("White = " + whiteEdgeCount + "    Black = " + blackEdgeCount);
+                    //Add value to total count
+                    totalPixelCount += whiteEdgeCount;
+                    // whiteCount = edges in range
+                    featureVector.Add(whiteEdgeCount);
+                }
             }
-            */
-        }
+            //Calculate Normalization and add the value to the featureNormVector
+            List<double> featureNormVector = new List<double>();
 
-        private void recolorToolStripMenuItem_Click(object sender, EventArgs e)
+            //Total Pixel Count
+            //Console.WriteLine(totalPixelCount);
+
+            //Normalization
+            for (i = 0; i < featureVector.Count; i++)
+            {
+                double normalizedValue = featureVector[i] / totalPixelCount;
+                Console.WriteLine(normalizedValue);
+                featureNormVector.Add(normalizedValue);
+            }
+        }
+        //Bitmap list
+        List<Bitmap> bitmapList = new List<Bitmap>();
+
+        private Bitmap performSkinExtract(Bitmap picture)
         {
-            
+            //Extracting RGBs
+            Bitmap hand = new Bitmap(picture);
+            Bitmap skinDetect = new Bitmap(hand.Width, hand.Height);
+            //Bitmap blackWhite = new Bitmap(hand.Width, hand.Height);
 
+            Color black = Color.Black;
+            //Color white = Color.White;
+
+            int i, j;
+            for (i = 0; i < hand.Width; i++)
+            {
+                for (j = 0; j < hand.Height; j++)
+                {
+                    Color pixel = hand.GetPixel(i, j);
+
+                    int red = pixel.R;
+                    int green = pixel.G;
+                    int blue = pixel.B;
+
+                    /* (R, G, B) is classified as skin if: 
+                        R > 95 and G > 40 and B > 20 and 
+                        max {R, G, B} – min{R, G, B} > 15 and 
+                        |R – G| > 15 and R > G and R > B
+                    */
+                    if ((red > 95 && green > 40 && blue > 20) && (max(red, green, blue) - min(red, green, blue) > 15)
+                        && Math.Abs(red - green) > 15 && red > green && red > blue)
+                    {
+                        //Console.WriteLine("Success");
+                        skinDetect.SetPixel(i, j, pixel);
+                    }
+                }
+            }
+            return skinDetect;
         }
+
+        private void openFolderToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            FolderBrowserDialog folderDialog = new FolderBrowserDialog();
+            List<String> imagesList = new List<String>();
+            int i, j;
+
+            DialogResult result = folderDialog.ShowDialog();
+            
+            if (result == DialogResult.OK && !string.IsNullOrWhiteSpace(folderDialog.SelectedPath))
+            {
+                DirectoryInfo directoryName = new DirectoryInfo(folderDialog.SelectedPath);
+                //Console.WriteLine(directoryName);
+                FileInfo[] imagesData = directoryName.GetFiles("*.jpg");
+                //System.Windows.Forms.MessageBox.Show("Files found: " + imagesData.Length.ToString(), "Message");
+
+                //Console.WriteLine(imagesData.Length);
+                for (i = 0; i < imagesData.Length; i++)
+                {
+                    //Image path
+                    imagesList.Add(String.Format(@"{0}\{1}", directoryName, imagesData[i].Name));
+                    //Console.WriteLine(String.Format(@"{0}\{1}", directoryName, imagesData[i].Name));
+                }
+            }
+
+            List<Bitmap> bitmapList = new List<Bitmap>();
+
+            foreach (var path in imagesList)
+            {
+                Bitmap img = new Bitmap(path);
+                bitmapList.Add(img);
+            }
+
+            List<List<double>> features = new List<List<double>>();
+            System.IO.StreamWriter file = new System.IO.StreamWriter(@"G:\Saarthi\TrainingFile.txt", append: true);
+            String alphabets = "0ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+            foreach (var image in bitmapList)
+            {
+                List<double> feature = automateFeatureNormalizationExtraction(image);
+                features.Add(feature);
+            }
+
+            //Converting 2D List to a 2D Array
+            double[][] featuresArray = features.Select(a => a.ToArray()).ToArray();
+
+            //Creating and writing to that file
+            for (i = 0; i < featuresArray.Length; i++)
+                for (j = 0; j < featuresArray.Length; j++)
+                    ;//System.IO.File.WriteAllLines(@"G:\Saarthi\TrainingFile.txt", featuresArray[i][j].ToString());
+            string fileName = @"G:\Saarthi\TrainingFile.txt";
+
+            try
+            {
+                // Check if file already exists. If yes, delete it. 
+                if (File.Exists(fileName))
+                {
+                    File.Delete(fileName);
+                }
+
+                // Create a new file 
+                using (FileStream fs = File.Create(fileName))
+                {
+                    // Add some text to file
+                    Byte[] title = new UTF8Encoding(true).GetBytes("New Text File");
+                    fs.Write(title, 0, title.Length);
+                }
+            }
+            catch (Exception Ex)
+            {
+                Console.WriteLine(Ex.ToString());
+            }
+        }
+
+        private List<double> automateFeatureNormalizationExtraction(Bitmap rawBitmapData)
+        {
+            Bitmap afterSkinOnly = performSkinExtract(rawBitmapData);
+
+            Grayscale filter = new Grayscale(0.2125, 0.71254, 0.0721);
+            Bitmap grayImage = filter.Apply(afterSkinOnly);
+            Threshold filter2 = new Threshold(100);
+            Bitmap filteredImage = filter2.Apply(grayImage);
+            Closing close = new Closing();
+            close.ApplyInPlace(filteredImage);
+            Opening open = new Opening();
+            open.ApplyInPlace(filteredImage);
+            // create filter for the filtered image
+            ExtractBiggestBlob filter3 = new ExtractBiggestBlob();
+            // apply the filter
+            Bitmap biggestBlobsImage = filter3.Apply(filteredImage);
+            AForge.IntPoint a = filter3.BlobPosition;
+            //Console.WriteLine(a);
+
+            //Biggest blob for old extracted skin image
+            ExtractBiggestBlob filter4 = new ExtractBiggestBlob();
+            Bitmap skinBlob = new Bitmap(afterSkinOnly);
+            //apply filter
+            Bitmap biggestSkinBlob = filter4.Apply(skinBlob);
+
+            //Skin color for largest blob
+            Bitmap one = new Bitmap(biggestSkinBlob);
+            Bitmap two = new Bitmap(biggestBlobsImage);
+
+            int i, j;
+
+            for (i = 0; i < two.Width; i++)
+            {
+                for (j = 0; j < two.Height; j++)
+                {
+                    Color pixelOne = one.GetPixel(i, j);
+                    Color pixelTwo = two.GetPixel(i, j);
+
+                    int redOne = pixelOne.R;
+                    int greenOne = pixelOne.G;
+                    int blueOne = pixelOne.B;
+
+                    int redTwo = pixelTwo.R;
+                    int greenTwo = pixelTwo.G;
+                    int blueTwo = pixelTwo.B;
+
+                    // This mask is logically AND with original image to extract only the palm which is required for feature extraction. 
+                    two.SetPixel(i, j, Color.FromArgb(redOne & redTwo, greenOne & greenTwo, blueOne & blueTwo));
+                }
+            }
+
+            //Getting a grayscae image from the recolored image
+            Bitmap getGrayImage = filter.Apply(two);
+            // create filter
+            CannyEdgeDetector filter1 = new CannyEdgeDetector();
+            filter1.LowThreshold = 0;
+            filter1.HighThreshold = 0;
+            filter1.GaussianSigma = 1.4;
+            // apply the filter
+            Bitmap cannyEdgeImage = filter1.Apply(getGrayImage);
+
+            Bitmap resizeImage = new Bitmap(360, 360);
+            using (var graphics = Graphics.FromImage(resizeImage))
+                graphics.DrawImage(cannyEdgeImage, 0, 0, 360, 360);
+
+            pictureBox3.Image = new Bitmap(resizeImage);
+            pictureBox3.SizeMode = PictureBoxSizeMode.StretchImage;
+
+            int x, y;
+            //Image to obtain blocks for
+            Bitmap imageWithBlock = new Bitmap(resizeImage);
+            //Console.WriteLine("Width = " + resizeImage.Width + " Height = " + resizeImage.Height);
+            int imageHeightSize = resizeImage.Height / blockSize;
+            int imageWidthSize = resizeImage.Width / blockSize;
+            //Console.WriteLine("Width = " + imageWidthSize + " Height = " + imageHeightSize);
+
+            List<int> featureVector = new List<int>();
+
+            double totalPixelCount = 0;
+
+            for (i = 0; i < blockSize; i++)
+            {
+                for (j = 0; j < blockSize; j++)
+                {
+                    int whiteEdgeCount = 0, blackEdgeCount = 0;
+                    for (x = i * imageWidthSize; x < (i * imageWidthSize) + imageWidthSize; x++)
+                    {
+                        for (y = j * imageHeightSize; y < (j * imageHeightSize) + imageHeightSize; y++)
+                        {
+                            // To count the edges in the range
+                            Color singlePixel = imageWithBlock.GetPixel(x, y);
+
+                            int red = singlePixel.R;
+                            int green = singlePixel.G;
+                            int blue = singlePixel.B;
+
+                            if (singlePixel != Color.FromArgb(Color.Black.ToArgb()))
+                            {
+                                whiteEdgeCount++;
+                            }
+                            else
+                            {
+                                blackEdgeCount++;
+                            }
+                        }
+                    }
+                    //Console.WriteLine("White = " + whiteEdgeCount + "    Black = " + blackEdgeCount);
+                    //Add value to total count
+                    totalPixelCount += whiteEdgeCount;
+                    // whiteCount = edges in range
+                    featureVector.Add(whiteEdgeCount);
+                }
+            }
+            //Calculate Normalization and add the value to the featureNormVector
+            List<double> featureNormVector = new List<double>();
+
+            //Total Pixel Count
+            //Console.WriteLine(totalPixelCount);
+
+            //Normalization
+            for (i = 0; i < featureVector.Count; i++)
+            {
+                double normalizedValue = featureVector[i] / totalPixelCount;
+                Console.WriteLine(normalizedValue);
+                featureNormVector.Add(normalizedValue);
+            }
+            Console.WriteLine("Total count of norm(individual)=" + i);
+            return featureNormVector;
+        }
+
     }
 }
+
 
